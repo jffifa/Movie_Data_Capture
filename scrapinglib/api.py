@@ -5,6 +5,7 @@ import json
 from .parser import Parser
 import config
 import importlib
+from .mdc_session import get_session, set_session
 
 
 def search(number, sources: str = None, **kwargs):
@@ -123,6 +124,7 @@ class Scraping:
             sources = self.checkAdultSources(sources, number)
         json_data = {}
         for source in sources:
+            set_session()
             try:
                 if self.debug:
                     print('[+]select', source)

@@ -5,6 +5,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from cloudscraper import create_scraper
+from .mdc_session import get_session
 
 import config
 
@@ -28,8 +29,13 @@ def get(url: str, cookies=None, ua: str = None, extra_headers=None, return_type:
             allowRedirects = False
             if 'www.dmm.co.jp' in url:
                 allowRedirects = True
+            """
             result = requests.get(url, headers=headers, timeout=timeout, proxies=proxies,
                                   verify=verify, cookies=cookies, allow_redirects=allowRedirects)
+            """
+            session = get_session()
+            result = session.get(url, headers=headers, timeout=timeout, proxies=proxies,
+                                 verify=verify, cookies=cookies, allow_redirects=allowRedirects)
             if return_type == "object":
                 return result
             elif return_type == "content":

@@ -20,6 +20,7 @@ from cloudscraper import create_scraper
 
 # project wide
 import config
+from scrapinglib.mdc_session import get_session
 
 
 def get_xpath_single(html_code: str, xpath):
@@ -43,15 +44,24 @@ def get_html(url, cookies: dict = None, ua: str = None, return_type: str = None,
     if json_headers is not None:
         headers.update(json_headers)
 
+    session = get_session()
     for i in range(config_proxy.retry):
         try:
             if config_proxy.enable:
                 proxies = config_proxy.proxies()
-                result = requests.get(str(url), headers=headers, timeout=config_proxy.timeout, proxies=proxies,
-                                      verify=verify,
-                                      cookies=cookies)
+                if session is not None:
+                    result = session.get(str(url), headers=headers, timeout=config_proxy.timeout, proxies=proxies,
+                                         verify=verify,
+                                         cookies=cookies)
+                else:
+                    result = requests.get(str(url), headers=headers, timeout=config_proxy.timeout, proxies=proxies,
+                                          verify=verify,
+                                          cookies=cookies)
             else:
-                result = requests.get(str(url), headers=headers, timeout=config_proxy.timeout, cookies=cookies)
+                if session is not None:
+                    result = session.get(str(url), headers=headers, timeout=config_proxy.timeout, cookies=cookies)
+                else:
+                    result = requests.get(str(url), headers=headers, timeout=config_proxy.timeout, cookies=cookies)
 
             if return_type == "object":
                 return result
