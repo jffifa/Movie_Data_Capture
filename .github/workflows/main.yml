@@ -1,35 +1,66 @@
-name: PyInstaller
+name: Build Images
 
 on:
   push:
     branches:
-      - master
-  pull_request:
-    branches:
-      - master
+      - main
+
+env:
+  VERSION: v6.6.14
+  REGISTRY: registry.cn-qingdao.aliyuncs.com
+  IMAGE: wod/movie_data_capture
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
-
+    name: Build Images
+    runs-on: ubuntu-latest
+    environment: REGISTRY_USER_ALIYUN
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Install UPX
-        uses: crazy-max/ghaction-upx@v2
-        if: matrix.os == 'windows-latest' || matrix.os == 'ubuntu-latest'
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
         with:
-          install-only: true
+          platforms: arm64
 
-      - name: UPX version
-        if: matrix.os == 'windows-latest' || matrix.os == 'ubuntu-latest'
-        run: upx --version
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Setup Python 3.10
-        uses: actions/setup-python@v2
+      - name: Login to Aliyun Container Registry
+        uses: docker/login-action@v3
         with:
-          python-version: "3.10"
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USER_ALIYUN }}
+          password: ${{ secrets.REGISTRY_PASSWORD_ALIYUN }}
+
+      - name: Build and push amd64 image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: .beagle/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.VERSION }}-amd64
+          build-args: |
+            BASE=${{ env.REGISTRY }}/wod/debian:bookworm-slim-amd64
+
+      - name: Build and push arm64 image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: .beagle/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.VERSION }}-arm64
+          build-args: |
+            BASE=${{ env.REGISTRY }}/wod/debian:bookworm-slim-arm64
+
+      - name: Create multi-arch manifest
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.VERSION }} \
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.VERSION }}-amd64 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.VERSION }}-arm64

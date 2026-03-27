@@ -5,7 +5,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from cloudscraper import create_scraper
-from .mdc_session import get_session
+from curl_cffi import requests as cffi_requests
 
 import config
 
@@ -29,19 +29,15 @@ def get(url: str, cookies=None, ua: str = None, extra_headers=None, return_type:
             allowRedirects = False
             if 'www.dmm.co.jp' in url:
                 allowRedirects = True
-            """
-            result = requests.get(url, headers=headers, timeout=timeout, proxies=proxies,
-                                  verify=verify, cookies=cookies, allow_redirects=allowRedirects)
-            """
-            session = get_session()
-            result = session.get(url, headers=headers, timeout=timeout, proxies=proxies,
-                                 verify=verify, cookies=cookies, allow_redirects=allowRedirects)
+            result = cffi_requests.get(url, headers=headers, timeout=timeout, proxies=proxies,
+                                  verify=verify, cookies=cookies, allow_redirects=allowRedirects,
+                                  impersonate='chrome')
             if return_type == "object":
                 return result
             elif return_type == "content":
                 return result.content
             else:
-                result.encoding = encoding or result.apparent_encoding
+                result.encoding = encoding or getattr(result, 'apparent_encoding', None) or 'utf-8'
                 return result.text
         except Exception as e:
             if config.getInstance().debug():
@@ -67,27 +63,27 @@ def post(url: str, data: dict=None, files=None, cookies=None, ua: str=None, retu
 
     for i in range(retry):
         try:
-            result = requests.post(url, data=data, files=files, headers=headers, timeout=timeout, proxies=proxies,
-                                   verify=verify, cookies=cookies)
+            result = cffi_requests.post(url, data=data, files=files, headers=headers, timeout=timeout, proxies=proxies,
+                                   verify=verify, cookies=cookies, impersonate='chrome')
             if return_type == "object":
                 return result
             elif return_type == "content":
                 return result.content
             else:
-                result.encoding = encoding or result.apparent_encoding
+                result.encoding = encoding or getattr(result, 'apparent_encoding', None) or 'utf-8'
                 return result
         except Exception as e:
             if config.getInstance().debug():
                 print(f"[-]Connect: {url} retry {i + 1}/{retry}")
             errors = str(e)
-        if config.getInstance().debug():
-            if "getaddrinfo failed" in errors:
-                print("[-]Connect Failed! Please Check your proxy config")
-                print("[-]" + errors)
-            else:
-                print("[-]" + errors)
-                print('[-]Connect Failed! Please check your Proxy or Network!')
-        raise Exception('Connect Failed')
+    if config.getInstance().debug():
+        if "getaddrinfo failed" in errors:
+            print("[-]Connect Failed! Please Check your proxy config")
+            print("[-]" + errors)
+        else:
+            print("[-]" + errors)
+            print('[-]Connect Failed! Please check your Proxy or Network!')
+    raise Exception('Connect Failed')
 
 
 class TimeoutHTTPAdapter(HTTPAdapter):
@@ -107,20 +103,13 @@ class TimeoutHTTPAdapter(HTTPAdapter):
 
 def request_session(cookies=None, ua: str=None, retry: int=3, timeout: int=G_DEFAULT_TIMEOUT, proxies=None, verify=None):
     """
-    keep-alive
+    keep-alive, 使用 curl_cffi 模拟浏览器 TLS 指纹，绕过 Cloudflare 检测
     """
-    session = requests.Session()
-    retries = Retry(total=retry, connect=retry, backoff_factor=1,
-                    status_forcelist=[429, 500, 502, 503, 504])
-    session.mount("https://", TimeoutHTTPAdapter(max_retries=retries, timeout=timeout))
-    session.mount("http://", TimeoutHTTPAdapter(max_retries=retries, timeout=timeout))
+    session = cffi_requests.Session(impersonate='chrome', timeout=timeout)
     if isinstance(cookies, dict) and len(cookies):
-        requests.utils.add_dict_to_cookiejar(session.cookies, cookies)
-    if verify:
-        session.verify = verify
+        session.cookies.update(cookies)
     if proxies:
         session.proxies = proxies
-    session.headers = {"User-Agent": ua or G_USER_AGENT}
     return session
 
 
